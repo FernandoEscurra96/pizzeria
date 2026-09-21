@@ -1,11 +1,13 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { itemName, priceOf } from "./menu";
 import {
   DELIVERY_TYPES,
   PAYMENT_METHODS,
   type NewOrder,
   type Order,
+  type OrderItem,
 } from "./types";
 
 const FILE = path.join(process.cwd(), "data", "orders.json");
@@ -33,14 +35,15 @@ export function validate(b: Partial<NewOrder>): string | null {
   if (
     b.items.some(
       (i) =>
-        !i.name ||
         !Number.isInteger(i.quantity) ||
         i.quantity < 1 ||
-        !Number.isFinite(i.unitPrice) ||
-        i.unitPrice < 0,
+        !Array.isArray(i.flavors) ||
+        ![1, 2].includes(i.flavors.length) ||
+        priceOf(i.flavors) === null ||
+        (i.flavors.length === 2 && i.flavors[0] === i.flavors[1]),
     )
   )
-    return "Productos inválidos";
+    return "Pizza inválida: elegí 1 sabor, o 2 sabores distintos";
   if (!PAYMENT_METHODS.includes(b.paymentMethod as never))
     return "Forma de pago inválida";
   if (!DELIVERY_TYPES.includes(b.deliveryType as never))
@@ -58,7 +61,13 @@ export function validate(b: Partial<NewOrder>): string | null {
 export async function createOrder(input: NewOrder): Promise<Order> {
   const now = new Date();
   const deliveryFee = input.deliveryType === "Delivery" ? input.deliveryFee : 0;
-  const subtotal = input.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
+  // Nombre y precio salen del menú del servidor, nunca del cliente.
+  const items: OrderItem[] = input.items.map((i) => ({
+    name: itemName(i.flavors),
+    quantity: i.quantity,
+    unitPrice: priceOf(i.flavors)!,
+  }));
+  const subtotal = items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
   const order: Order = {
     id: randomUUID(),
     date: now.toLocaleDateString("es-PY", {
@@ -74,7 +83,7 @@ export async function createOrder(input: NewOrder): Promise<Order> {
       hour12: false,
     }),
     customer: input.customer.trim(),
-    items: input.items,
+    items,
     deliveryFee,
     total: subtotal + deliveryFee, // el total siempre se calcula en el servidor
     paymentMethod: input.paymentMethod,

@@ -23,7 +23,17 @@ export interface Order {
   address: string; // vacío si es retiro
 }
 
-export type NewOrder = Pick<
-  Order,
-  "customer" | "items" | "paymentMethod" | "deliveryType" | "address" | "deliveryFee"
->;
+/** Pizza pedida: 1 sabor entero, o 2 sabores (mitad y mitad). El precio lo fija el servidor. */
+export interface ItemInput {
+  quantity: number;
+  flavors: string[];
+}
+
+export interface NewOrder {
+  customer: string;
+  items: ItemInput[];
+  paymentMethod: PaymentMethod;
+  deliveryType: DeliveryType;
+  address: string;
+  deliveryFee: number;
+}
