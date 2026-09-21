@@ -72,8 +72,9 @@ async function ensureConnected(): Promise<BluetoothRemoteGATTCharacteristic> {
   );
   log(`Servicios encontrados: ${services.map((s) => short(s.uuid)).join(", ") || "ninguno"}`);
 
-  let chosen: { c: BluetoothRemoteGATTCharacteristic; s: BluetoothRemoteGATTService } | null = null;
-  let fallback: typeof chosen = null;
+  type Pick = { c: BluetoothRemoteGATTCharacteristic; s: BluetoothRemoteGATTService };
+  let chosen = null as Pick | null;
+  let fallback = null as Pick | null;
   const notifiers = new Map<string, BluetoothRemoteGATTCharacteristic>();
 
   for (const s of services) {
