@@ -1,7 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { feeFor } from "./menu";
 import {
   DELIVERY_TYPES,
   PAYMENT_METHODS,
@@ -46,6 +45,11 @@ export function validate(b: Partial<NewOrder>): string | null {
     return "Forma de pago inválida";
   if (!DELIVERY_TYPES.includes(b.deliveryType as never))
     return "Tipo de entrega inválido";
+  if (
+    b.deliveryType === "Delivery" &&
+    (!Number.isInteger(b.deliveryFee) || (b.deliveryFee as number) < 0)
+  )
+    return "Costo de delivery inválido";
   if (b.deliveryType === "Delivery" && !b.address?.trim())
     return "La dirección es obligatoria para delivery";
   return null;
@@ -53,7 +57,7 @@ export function validate(b: Partial<NewOrder>): string | null {
 
 export async function createOrder(input: NewOrder): Promise<Order> {
   const now = new Date();
-  const deliveryFee = feeFor(input.deliveryType);
+  const deliveryFee = input.deliveryType === "Delivery" ? input.deliveryFee : 0;
   const subtotal = input.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
   const order: Order = {
     id: randomUUID(),

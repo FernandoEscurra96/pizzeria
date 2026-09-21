@@ -1,5 +1,3 @@
-import type { DeliveryType } from "./types";
-
 export interface MenuItem {
   name: string;
   price: number; // Gs
@@ -12,7 +10,5 @@ export const MENU: MenuItem[] = [
   { name: "Pizza Calabresa", price: 45000 },
 ];
 
-export const DELIVERY_FEE = 10000;
-
-export const feeFor = (type: DeliveryType) =>
-  type === "Delivery" ? DELIVERY_FEE : 0;
+/** Valor inicial sugerido del campo delivery (editable en el formulario). */
+export const DEFAULT_DELIVERY_FEE = 10000;

@@ -42,3 +42,4 @@ next-env.d.ts
 data/
 .serena/cache/
 .serena/project.local.yml
+*.apk

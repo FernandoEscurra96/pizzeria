@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { DELIVERY_FEE, MENU, feeFor } from "@/lib/menu";
+import { DEFAULT_DELIVERY_FEE, MENU } from "@/lib/menu";
 import { gs } from "@/lib/format";
 import {
   DELIVERY_TYPES,
@@ -21,6 +21,7 @@ export default function OrderForm() {
   const [payment, setPayment] = useState<PaymentMethod>("Transferencia");
   const [delivery, setDelivery] = useState<DeliveryType>("Delivery");
   const [address, setAddress] = useState("");
+  const [fee, setFee] = useState(DEFAULT_DELIVERY_FEE);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -30,7 +31,7 @@ export default function OrderForm() {
     unitPrice: m.price,
   }));
   const total =
-    items.reduce((s, i) => s + i.quantity * i.unitPrice, 0) + feeFor(delivery);
+    items.reduce((s, i) => s + i.quantity * i.unitPrice, 0) + (delivery === "Delivery" ? fee : 0);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -39,7 +40,7 @@ export default function OrderForm() {
     const res = await fetch("/api/orders", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ customer, items, paymentMethod: payment, deliveryType: delivery, address }),
+      body: JSON.stringify({ customer, items, paymentMethod: payment, deliveryType: delivery, address, deliveryFee: fee }),
     });
     setBusy(false);
     if (!res.ok) return setError((await res.json()).error ?? "Error al guardar");
@@ -93,15 +94,28 @@ export default function OrderForm() {
       </div>
 
       {delivery === "Delivery" && (
-        <label className="block text-sm">
-          Dirección
-          <input className={input} value={address} onChange={(e) => setAddress(e.target.value)} />
-        </label>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block text-sm">
+            Dirección
+            <input className={input} value={address} onChange={(e) => setAddress(e.target.value)} />
+          </label>
+          <label className="block text-sm">
+            Delivery (Gs)
+            <input
+              type="number"
+              min={0}
+              step={1000}
+              className={input}
+              value={fee}
+              onChange={(e) => setFee(Math.max(0, Math.floor(+e.target.value || 0)))}
+            />
+          </label>
+        </div>
       )}
 
       <div className="flex items-center justify-between border-t pt-3 text-sm">
         <span className="text-neutral-500">
-          {delivery === "Delivery" && `Incluye delivery ${gs(DELIVERY_FEE)}`}
+          {delivery === "Delivery" && `Incluye delivery ${gs(fee)}`}
         </span>
         <strong className="text-base">TOTAL: {gs(total)}</strong>
       </div>

@@ -25,5 +25,5 @@ export interface Order {
 
 export type NewOrder = Pick<
   Order,
-  "customer" | "items" | "paymentMethod" | "deliveryType" | "address"
+  "customer" | "items" | "paymentMethod" | "deliveryType" | "address" | "deliveryFee"
 >;

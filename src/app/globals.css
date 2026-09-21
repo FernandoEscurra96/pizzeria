@@ -24,3 +24,10 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Impresión: solo el ticket marcado, con tipografía monoespaciada de ancho fijo */
+@media print {
+  body * { visibility: hidden; }
+  .ticket[data-print], .ticket[data-print] * { visibility: visible; }
+  .ticket[data-print] { position: absolute; left: 0; top: 0; box-shadow: none; }
+}
