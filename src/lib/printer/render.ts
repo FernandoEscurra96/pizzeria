@@ -1,4 +1,4 @@
-import { PRINTER_DOTS, rgbaToBits } from "./escpos";
+import { PRINTER_DOTS, rgbaToBits } from "./mxw";
 
 const COLS = 32; // debe coincidir con WIDTH de src/lib/format.ts
 

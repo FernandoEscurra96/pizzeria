@@ -1,4 +1,4 @@
-import { buildJob, init, feed } from "./escpos";
+import { buildJob } from "./mxw";
 import { textToBits } from "./render";
 
 export type Log = (line: string) => void;
@@ -149,29 +149,24 @@ async function run(job: () => Promise<void>, logger: Log) {
   }
 }
 
-/** Imprime un ticket de texto (como imagen) en la impresora de 58 mm. */
-export const printTicket = (text: string, logger: Log) =>
-  run(async () => {
-    const { bits, height } = textToBits(text);
-    log(`Ticket: ${height} líneas de 384 puntos`);
-    const w = await ensureConnected();
-    let total = 0;
-    for (const part of buildJob(bits, height)) {
-      await send(w, part);
-      total += part.length;
-    }
-    log(`✓ ${total} bytes enviados. Si no salió papel, probá "Prueba de texto".`);
-  }, logger);
+async function printText(text: string) {
+  const { bits, height } = textToBits(text);
+  log(`Imagen: ${height} líneas de 384 puntos`);
+  const w = await ensureConnected();
+  let total = 0;
+  for (const part of buildJob(bits, height)) {
+    await send(w, part);
+    total += part.length;
+  }
+  log(`✓ ${total} bytes enviados`);
+}
 
-/** Prueba mínima: texto ASCII plano, sin imágenes. */
+/** Imprime un ticket (dibujado como imagen) en la impresora de 58 mm. */
+export const printTicket = (text: string, logger: Log) => run(() => printText(text), logger);
+
+/** Prueba corta con el mismo protocolo. */
 export const printTextTest = (logger: Log) =>
-  run(async () => {
-    const w = await ensureConnected();
-    const body = new TextEncoder().encode("PRUEBA DE IMPRESION\n1234567890\n");
-    const data = new Uint8Array([...init(), ...body, ...feed(3)]);
-    await send(w, data);
-    log(`✓ ${data.length} bytes de texto enviados`);
-  }, logger);
+  run(() => printText("PRUEBA DE IMPRESION\n1234567890"), logger);
 
 export function disconnectPrinter() {
   device?.gatt?.disconnect();
