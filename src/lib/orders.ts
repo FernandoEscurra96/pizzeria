@@ -1,31 +1,64 @@
-import { promises as fs } from "node:fs";
-import path from "node:path";
-import { randomUUID } from "node:crypto";
 import { itemName, priceOf } from "./menu";
+import { getSupabase } from "./supabase";
 import {
   DELIVERY_TYPES,
   PAYMENT_METHODS,
+  type DeliveryType,
   type NewOrder,
   type Order,
   type OrderItem,
+  type PaymentMethod,
 } from "./types";
 
-const FILE = path.join(process.cwd(), "data", "orders.json");
-
-async function readAll(): Promise<Order[]> {
-  try {
-    return JSON.parse(await fs.readFile(FILE, "utf8")) as Order[];
-  } catch {
-    return [];
-  }
+interface OrderRow {
+  id: string;
+  created_at: string;
+  customer: string;
+  items: OrderItem[];
+  delivery_fee: number;
+  total: number;
+  payment_method: PaymentMethod;
+  delivery_type: DeliveryType;
+  address: string;
 }
 
-const writeAll = async (orders: Order[]) => {
-  await fs.mkdir(path.dirname(FILE), { recursive: true });
-  await fs.writeFile(FILE, JSON.stringify(orders, null, 2), "utf8");
-};
+const dateOpts = {
+  timeZone: "America/Asuncion",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+} as const;
+const timeOpts = {
+  timeZone: "America/Asuncion",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+} as const;
 
-export const listOrders = async () => (await readAll()).reverse();
+function toOrder(row: OrderRow): Order {
+  const created = new Date(row.created_at);
+  return {
+    id: row.id,
+    date: created.toLocaleDateString("es-PY", dateOpts),
+    time: created.toLocaleTimeString("es-PY", timeOpts),
+    customer: row.customer,
+    items: row.items,
+    deliveryFee: row.delivery_fee,
+    total: row.total,
+    paymentMethod: row.payment_method,
+    deliveryType: row.delivery_type,
+    address: row.address,
+  };
+}
+
+export async function listOrders(): Promise<Order[]> {
+  const { data, error } = await getSupabase()
+    .from("orders")
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(`No se pudieron leer los pedidos: ${error.message}`);
+  return (data as OrderRow[]).map(toOrder);
+}
 
 /** Valida la entrada; devuelve un mensaje de error o null. */
 export function validate(b: Partial<NewOrder>): string | null {
@@ -59,7 +92,6 @@ export function validate(b: Partial<NewOrder>): string | null {
 }
 
 export async function createOrder(input: NewOrder): Promise<Order> {
-  const now = new Date();
   const deliveryFee = input.deliveryType === "Delivery" ? input.deliveryFee : 0;
   // Nombre y precio salen del menú del servidor, nunca del cliente.
   const items: OrderItem[] = input.items.map((i) => ({
@@ -68,28 +100,20 @@ export async function createOrder(input: NewOrder): Promise<Order> {
     unitPrice: priceOf(i.flavors)!,
   }));
   const subtotal = items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
-  const order: Order = {
-    id: randomUUID(),
-    date: now.toLocaleDateString("es-PY", {
-      timeZone: "America/Asuncion",
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    }),
-    time: now.toLocaleTimeString("es-PY", {
-      timeZone: "America/Asuncion",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    }),
-    customer: input.customer.trim(),
-    items,
-    deliveryFee,
-    total: subtotal + deliveryFee, // el total siempre se calcula en el servidor
-    paymentMethod: input.paymentMethod,
-    deliveryType: input.deliveryType,
-    address: input.deliveryType === "Delivery" ? input.address.trim() : "",
-  };
-  await writeAll([...(await readAll()), order]);
-  return order;
+
+  const { data, error } = await getSupabase()
+    .from("orders")
+    .insert({
+      customer: input.customer.trim(),
+      items,
+      delivery_fee: deliveryFee,
+      total: subtotal + deliveryFee, // el total siempre se calcula en el servidor
+      payment_method: input.paymentMethod,
+      delivery_type: input.deliveryType,
+      address: input.deliveryType === "Delivery" ? input.address.trim() : "",
+    })
+    .select()
+    .single();
+  if (error) throw new Error(`No se pudo guardar el pedido: ${error.message}`);
+  return toOrder(data as OrderRow);
 }
