@@ -1,15 +1,23 @@
-"use client";
+// ============================================================================
+// MODAL DE RESULTADO DE IMPRESIÓN
+// ----------------------------------------------------------------------------
+// Componente puramente visual (no tiene estado propio ni hace fetch): todo lo
+// que muestra viene por props desde OrderTicket.tsx, que es quien decide
+// cuándo abrirlo y qué mensaje mostrar (éxito o error).
+// ============================================================================
 
+// `export interface` + `export default function`: este archivo exporta dos
+// cosas a la vez, el tipo de datos que necesita el modal y el componente.
 export interface DialogState {
-  kind: "error" | "ok";
+  kind: "error" | "ok"; // decide el color del título (rojo o verde)
   title: string;
   message: string;
-  log: string[];
+  log: string[]; // líneas de diagnóstico (qué característica Bluetooth se usó, bytes enviados, etc.)
 }
 
 interface Props {
   state: DialogState;
-  busy: boolean;
+  busy: boolean; // true mientras se está reintentando "Prueba de texto"
   onTextTest: () => void;
   onClose: () => void;
 }
@@ -18,6 +26,9 @@ export default function PrinterDialog({ state, busy, onTextTest, onClose }: Prop
   const isError = state.kind === "error";
 
   return (
+    // `role="alertdialog"` y `aria-modal` son atributos de accesibilidad: le
+    // avisan a lectores de pantalla que esto es un diálogo que interrumpe el
+    // flujo normal de la página (equivalente semántico de un modal).
     <div
       role="alertdialog"
       aria-modal="true"
@@ -35,6 +46,8 @@ export default function PrinterDialog({ state, busy, onTextTest, onClose }: Prop
         <p className="mt-1 text-sm">{state.message}</p>
 
         <p className="mt-3 text-xs font-medium text-neutral-500">Diagnóstico</p>
+        {/* `state.log.join("\n")` convierte el arreglo de líneas en un solo
+            texto con saltos de línea, para mostrarlo dentro de un <pre>. */}
         <pre className="mt-1 max-h-56 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-neutral-100 p-2 text-[11px] leading-snug">
           {state.log.join("\n") || "(sin registros)"}
         </pre>
