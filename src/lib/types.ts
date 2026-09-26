@@ -43,11 +43,25 @@ export interface Order {
   address: string; // vacío si es retiro
 }
 
-/** Pizza pedida: 1 sabor entero, o 2 sabores (mitad y mitad). El precio lo fija el servidor. */
-export interface ItemInput {
+// Unión discriminada: el campo `kind` le dice a TypeScript (y a nosotros)
+// cuál de las dos formas tiene el objeto en cada caso, según si es una pizza
+// por sabor o una promo. El precio de ambas lo fija siempre el servidor.
+
+/** Pizza pedida: 1 sabor entero, o 2 sabores (mitad y mitad). */
+export interface FlavorItemInput {
+  kind: "flavor";
   quantity: number;
   flavors: string[]; // 1 elemento = pizza entera; 2 elementos = mitad y mitad
 }
+
+/** Promoción elegida (paquete a precio fijo; ver PROMOS en src/lib/menu.ts). */
+export interface PromoItemInput {
+  kind: "promo";
+  quantity: number; // cuántos paquetes, no cuántas pizzas
+  promo: string; // nombre de la promo, tal como aparece en PROMOS
+}
+
+export type ItemInput = FlavorItemInput | PromoItemInput;
 
 // Lo que manda el formulario al crear un pedido (todavía sin id, fecha, ni
 // total: eso lo calcula el servidor en src/lib/orders.ts, nunca el cliente).

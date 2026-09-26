@@ -38,6 +38,23 @@ export function priceOf(flavors: string[]): number | null {
   return Math.max(...found.map((f) => f!.price));
 }
 
+
+export interface Promo {
+  name: string;
+  price: number; // Gs, precio del paquete completo (no es la suma de las partes)
+}
+
+// Promociones vigentes: combos a un precio fijo, distinto de sumar sabores
+// sueltos. Cada una se pide como su propia línea en el formulario (no se
+// mezcla con "mitad y mitad"): la cantidad es cuántos paquetes, no pizzas.
+export const PROMOS: Promo[] = [
+  { name: "Promo 2 pizzas Mozzarella", price: 50000 },
+];
+
+/** Precio de una promo por su nombre, o null si no existe (igual criterio que priceOf). */
+export const promoPrice = (name: string): number | null =>
+  PROMOS.find((p) => p.name === name)?.price ?? null;
+
 export const itemName = (flavors: string[]) =>
   flavors.length === 2
     ? `Pizza 1/2 ${flavors[0]} + 1/2 ${flavors[1]}`

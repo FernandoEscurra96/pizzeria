@@ -13,25 +13,50 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import CustomerPicker from "@/components/CustomerPicker";
-import { DEFAULT_DELIVERY_FEE, MENU, priceOf } from "@/lib/menu";
+import { DEFAULT_DELIVERY_FEE, MENU, priceOf, PROMOS, promoPrice } from "@/lib/menu";
 import { gs } from "@/lib/format";
-import { DELIVERY_TYPES, PAYMENT_METHODS, type DeliveryType, type PaymentMethod } from "@/lib/types";
+import {
+  DELIVERY_TYPES,
+  PAYMENT_METHODS,
+  type DeliveryType,
+  type ItemInput,
+  type PaymentMethod,
+} from "@/lib/types";
 
-// Una "línea" de pizza en el formulario (no confundir con OrderItem: esto es
-// solo el estado de la UI mientras se completa el pedido; recién al enviar se
-// convierte en los ítems reales que espera la API).
+// Una "línea" del formulario (no confundir con OrderItem: esto es solo el
+// estado de la UI mientras se completa el pedido; recién al enviar se
+// convierte en los ítems reales que espera la API, con la forma de ItemInput).
+// Puede ser una pizza por sabor (kind "flavor") o una promo (kind "promo");
+// los campos de la que no corresponde simplemente no se usan.
 interface Line {
   id: number; // id local, solo para que React distinga una línea de otra (prop `key`)
+  kind: "flavor" | "promo";
   qty: number;
-  half: boolean; // ¿es mitad y mitad?
+  half: boolean; // ¿es mitad y mitad? (solo aplica si kind === "flavor")
   f1: string; // sabor de la primera mitad (o el único sabor, si no es mitad y mitad)
   f2: string; // sabor de la segunda mitad (se ignora si half === false)
+  promo: string; // nombre de la promo elegida (solo aplica si kind === "promo")
 }
 
 let nextId = 1; // contador simple para generar ids únicos de línea (vive fuera del componente)
-const newLine = (): Line => ({ id: nextId++, qty: 1, half: false, f1: MENU[0].name, f2: MENU[1].name });
+const newLine = (): Line => ({
+  id: nextId++,
+  kind: "flavor",
+  qty: 1,
+  half: false,
+  f1: MENU[0].name,
+  f2: MENU[1].name,
+  promo: PROMOS[0]?.name ?? "",
+});
 // Devuelve 1 sabor, o 2 si es mitad y mitad (según cómo esté armado priceOf/itemName en menu.ts).
 const flavorsOf = (l: Line) => (l.half ? [l.f1, l.f2] : [l.f1]);
+// Precio unitario de la línea, sea pizza o promo (para mostrar el subtotal en pantalla).
+const priceOfLine = (l: Line) => (l.kind === "promo" ? (promoPrice(l.promo) ?? 0) : (priceOf(flavorsOf(l)) ?? 0));
+// Convierte una línea de la UI en el ItemInput que espera la API (ver types.ts).
+const toItemInput = (l: Line): ItemInput =>
+  l.kind === "promo"
+    ? { kind: "promo", quantity: l.qty, promo: l.promo }
+    : { kind: "flavor", quantity: l.qty, flavors: flavorsOf(l) };
 
 // Clase de Tailwind reutilizada por varios inputs/selects del formulario, para
 // no repetir la misma cadena larga en cada uno.
@@ -61,8 +86,8 @@ export default function OrderForm() {
   // Estos valores NO están en un useState: se recalculan en cada render a
   // partir de `lines`/`delivery`/`fee`. No hace falta guardarlos aparte
   // porque siempre se pueden derivar de nuevo (evita que queden desactualizados).
-  const items = lines.map((l) => ({ quantity: l.qty, flavors: flavorsOf(l) }));
-  const subtotal = lines.reduce((s, l) => s + l.qty * (priceOf(flavorsOf(l)) ?? 0), 0);
+  const items = lines.map(toItemInput);
+  const subtotal = lines.reduce((s, l) => s + l.qty * priceOfLine(l), 0);
   const total = subtotal + (delivery === "Delivery" ? fee : 0);
 
   // Se ejecuta al tocar "Guardar pedido". `React.FormEvent` es el tipo del
@@ -112,12 +137,11 @@ export default function OrderForm() {
       </label>
 
       <fieldset className="space-y-3">
-        <legend className="text-sm">Pizzas</legend>
-        {/* Recorremos cada línea de pizza y dibujamos sus controles.
+        <legend className="text-sm">Pizzas y promos</legend>
+        {/* Recorremos cada línea y dibujamos sus controles.
             `key={l.id}` es el id que ayuda a React a no confundir una línea con otra. */}
         {lines.map((l) => {
-          const flavors = flavorsOf(l);
-          const same = l.half && l.f1 === l.f2; // mitad y mitad con el mismo sabor 2 veces: inválido
+          const same = l.kind === "flavor" && l.half && l.f1 === l.f2; // mitad y mitad con el mismo sabor 2 veces: inválido
           return (
             <div key={l.id} className="space-y-2 rounded-xl border border-neutral-200 p-3 text-sm">
               <div className="flex items-center gap-2">
@@ -129,20 +153,25 @@ export default function OrderForm() {
                   value={l.qty}
                   onChange={(e) => update(l.id, { qty: Math.max(1, Math.floor(+e.target.value || 1)) })}
                 />
-                <select
-                  aria-label={l.half ? "Sabor primera mitad" : "Sabor"}
-                  className={input}
-                  value={l.f1}
-                  onChange={(e) => update(l.id, { f1: e.target.value })}
-                >
-                  {MENU.map((m) => <option key={m.name}>{m.name}</option>)}
-                </select>
+                {/* Solo mostramos el selector "Tipo" si hay alguna promo cargada
+                    en menu.ts; si no hay ninguna, esta línea siempre es pizza. */}
+                {PROMOS.length > 0 && (
+                  <select
+                    aria-label="Tipo"
+                    className={input}
+                    value={l.kind}
+                    onChange={(e) => update(l.id, { kind: e.target.value as Line["kind"] })}
+                  >
+                    <option value="flavor">Pizza</option>
+                    <option value="promo">Promo</option>
+                  </select>
+                )}
                 {/* Solo se puede quitar una línea si hay más de una (siempre
-                    debe quedar al menos 1 pizza en el pedido). */}
+                    debe quedar al menos 1 en el pedido). */}
                 {lines.length > 1 && (
                   <button
                     type="button" // "button" evita que este botón envíe el <form> por error
-                    aria-label="Quitar pizza"
+                    aria-label="Quitar línea"
                     onClick={() => setLines(lines.filter((x) => x.id !== l.id))}
                     className="rounded-lg px-2 py-1 text-neutral-500 hover:bg-neutral-100"
                   >
@@ -151,29 +180,57 @@ export default function OrderForm() {
                 )}
               </div>
 
-              <label className="flex items-center gap-2">
-                <input type="checkbox" checked={l.half} onChange={(e) => update(l.id, { half: e.target.checked })} />
-                Mitad y mitad (2 sabores)
-              </label>
-
-              {/* Renderizado condicional: el segundo <select> solo aparece si
-                  `l.half` es true. En JSX, `{condición && <algo/>}` es la
-                  forma habitual de mostrar u ocultar partes de la interfaz. */}
-              {l.half && (
+              {/* Renderizado condicional: según `l.kind`, se dibuja el selector
+                  de promo, o los controles de sabor + mitad y mitad. En JSX,
+                  `cond ? <A/> : <B/>` es la forma habitual de elegir entre dos
+                  interfaces según un valor. */}
+              {l.kind === "promo" ? (
                 <select
-                  aria-label="Sabor segunda mitad"
+                  aria-label="Promoción"
                   className={input}
-                  value={l.f2}
-                  onChange={(e) => update(l.id, { f2: e.target.value })}
+                  value={l.promo}
+                  onChange={(e) => update(l.id, { promo: e.target.value })}
                 >
-                  {MENU.map((m) => <option key={m.name}>{m.name}</option>)}
+                  {PROMOS.map((p) => (
+                    <option key={p.name} value={p.name}>
+                      {p.name}
+                    </option>
+                  ))}
                 </select>
+              ) : (
+                <>
+                  <select
+                    aria-label={l.half ? "Sabor primera mitad" : "Sabor"}
+                    className={input}
+                    value={l.f1}
+                    onChange={(e) => update(l.id, { f1: e.target.value })}
+                  >
+                    {MENU.map((m) => <option key={m.name}>{m.name}</option>)}
+                  </select>
+
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" checked={l.half} onChange={(e) => update(l.id, { half: e.target.checked })} />
+                    Mitad y mitad (2 sabores)
+                  </label>
+
+                  {/* `{condición && <algo/>}`: el segundo <select> solo aparece si `l.half` es true. */}
+                  {l.half && (
+                    <select
+                      aria-label="Sabor segunda mitad"
+                      className={input}
+                      value={l.f2}
+                      onChange={(e) => update(l.id, { f2: e.target.value })}
+                    >
+                      {MENU.map((m) => <option key={m.name}>{m.name}</option>)}
+                    </select>
+                  )}
+                </>
               )}
 
               <p className={`text-xs ${same ? "text-red-600" : "text-neutral-500"}`}>
                 {same
                   ? "Elegí dos sabores distintos"
-                  : `${l.qty} × ${gs(priceOf(flavors) ?? 0)}${l.half ? " (se cobra la mitad más cara)" : ""}`}
+                  : `${l.qty} × ${gs(priceOfLine(l))}${l.kind === "flavor" && l.half ? " (se cobra la mitad más cara)" : ""}`}
               </p>
             </div>
           );

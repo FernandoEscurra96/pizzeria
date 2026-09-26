@@ -7,7 +7,7 @@
 // que tocar este archivo.
 // ============================================================================
 
-import { itemName, priceOf } from "./menu";
+import { itemName, priceOf, promoPrice } from "./menu";
 import { getSupabase } from "./supabase";
 import {
   DELIVERY_TYPES,
@@ -92,18 +92,21 @@ export function validate(b: Partial<NewOrder>): string | null {
     return "Agregá al menos un producto";
   if (
     // `.some()` devuelve true si AL MENOS UN elemento cumple la condición
-    // (alcanza con que una sola pizza esté mal para rechazar todo el pedido).
-    b.items.some(
-      (i) =>
-        !Number.isInteger(i.quantity) ||
-        i.quantity < 1 ||
+    // (alcanza con que una sola línea esté mal para rechazar todo el pedido).
+    // Cada línea puede ser una pizza por sabor o una promo (ver ItemInput en
+    // types.ts); según `kind`, se valida contra MENU o contra PROMOS.
+    b.items.some((i) => {
+      if (!Number.isInteger(i.quantity) || i.quantity < 1) return true;
+      if (i.kind === "promo") return promoPrice(i.promo) === null;
+      return (
         !Array.isArray(i.flavors) ||
         ![1, 2].includes(i.flavors.length) ||
         priceOf(i.flavors) === null ||
-        (i.flavors.length === 2 && i.flavors[0] === i.flavors[1]),
-    )
+        (i.flavors.length === 2 && i.flavors[0] === i.flavors[1])
+      );
+    })
   )
-    return "Pizza inválida: elegí 1 sabor, o 2 sabores distintos";
+    return "Pizza inválida: elegí 1 sabor, 2 sabores distintos, o una promo existente";
   if (!PAYMENT_METHODS.includes(b.paymentMethod as never))
     return "Forma de pago inválida";
   if (!DELIVERY_TYPES.includes(b.deliveryType as never))
@@ -121,14 +124,15 @@ export function validate(b: Partial<NewOrder>): string | null {
 export async function createOrder(input: NewOrder): Promise<Order> {
   const deliveryFee = input.deliveryType === "Delivery" ? input.deliveryFee : 0;
 
-  // Nombre y precio de cada pizza salen del menú del servidor (src/lib/menu.ts),
-  // nunca de lo que mande el navegador: así nadie puede pedir una pizza "gratis"
-  // manipulando la petición HTTP.
-  const items: OrderItem[] = input.items.map((i) => ({
-    name: itemName(i.flavors),
-    quantity: i.quantity,
-    unitPrice: priceOf(i.flavors)!, // el "!" es seguro: validate() ya garantizó que no es null
-  }));
+  // Nombre y precio de cada línea salen siempre del servidor (src/lib/menu.ts),
+  // nunca de lo que mande el navegador: así nadie puede pedir algo "gratis"
+  // manipulando la petición HTTP. Cada línea es una pizza por sabor o una
+  // promo (ver el `kind` de ItemInput en types.ts).
+  const items: OrderItem[] = input.items.map((i) =>
+    i.kind === "promo"
+      ? { name: i.promo, quantity: i.quantity, unitPrice: promoPrice(i.promo)! }
+      : { name: itemName(i.flavors), quantity: i.quantity, unitPrice: priceOf(i.flavors)! },
+  ); // el "!" es seguro: validate() ya garantizó que ninguno de los dos es null
   const subtotal = items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
 
   const { data, error } = await getSupabase()
